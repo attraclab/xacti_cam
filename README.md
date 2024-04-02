@@ -71,11 +71,21 @@ This project is to control XACTI CX-GB400 gimbal and camera by using ROS topics.
 ```
 
 ## Topics Definition
-| Topic name                  |       Msg type    | Definition            |
-| :-------------------------- | :---------------: | :-------------------- |
-| /xacti/camera/orientation   | std_msgs/msg/Int8 | define the camera orientation 0: lower side, 1: uppser side, 2: yaw is not activated (must be fixed mechanically), 3: auto judge |
-| /xacti/camera/photo_capture | std_msgs/msg/Bool | either True or False then take a picture and save to SD card |
-| /xacti/camera/focus_mode    | std_msgs/msg/Int8 | 0: MF (default), 1: S-AF, 2: C-AF |
+| Topic name                      |       Msg type     | Definition            |
+| :------------------------------ | :---------------:  | :-------------------- |
+| /xacti/camera/orientation       | std_msgs/msg/Int8  | define the camera orientation, <br>0: lower side <br>1: uppser side <br>2: yaw is not activated (must be fixed mechanically)<br> 3: auto judge |
+| /xacti/camera/photo_capture     | std_msgs/msg/Bool  | either True or False then take a picture and save to SD card |
+| /xacti/camera/focus_mode        | std_msgs/msg/Int8  | Change focus mode, <br>0: MF (default) <br>1: S-AF <br>2: C-AF |
+| /xacti/camera/focus_mm          | std_msgs/msg/Int32 | Focus position in mm from 300 - 100000(default) |
+| /xacti/camera/video_record      | std_msgs/msg/Bool  | Start or stop recording video to SD card <br>True: start recording <br>False: stop recording |
+| /xacti/camera/video_resolution  | std_msgs/msg/Int8  | Change the video resolution, <br>0: 4K (default) <br>1: 2.7K <br>2: Full HD <br>3: HD |
+| /xacti/camera/optical_zoom      | std_msgs/msg/Int32 | Do optical zoom, data from 100 to 250 with incremented by 10 |
+| /xacti/camera/iso               | std_msgs/msg/Int8  | Change ISO sensitivity <br>0 : auto <br>1 : 125 (default) <br>2 : 160 <br>3 : 200 <br>4 : 250 <br>5 : 320 <br>6 : 400 <br>7 : 500 <br>8 : 640 <br>9 : 800 <br>10 : 1000 <br>11 : 1250 <br>12 : 1600 <br>13 : 2000 <br>14 : 2500 <br>15 : 3200 <br>16 : 4000 <br>17 : 5000 <br>18 : 6400 |
+| /xacti/camera/aperture          | std_msgs/msg/Int8  | Change aperture <br>0 : F2.8 (default) <br>1 : F3.2 <br>2 : F3.5 <br>3 : F4.0 <br>4 : F4.5 <br>5 : F5.0 <br>6 : F5.6 <br>7 : F6.3 <br>8 : F7.1 <br>9 : F8.0 <br>10 : F9.0 <br>11 : F10.0 <br>12 : F11.0 |
+| /xacti/gimbal/restart           | std_msgs/msg/Bool  | Restart and do initialization on gimbal based on camera orientation steup |
+| /xacti/gimbal/pan               | std_msgs/msg/Int16 | Control pan angle from -85 to 85 degrees |
+| /xacti/gimbal/tilt              | std_msgs/msg/Int16 | Control tilt angle <br>tilt (lower mount): -115 deg to 45 deg <br>tilt (upper mount): -45 |deg to 115 deg |
+| /xacti/camera/view              | sensor_msgs/msg/Image | Image message to view camera streaming |
 
 ## Run
 
