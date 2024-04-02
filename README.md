@@ -35,19 +35,23 @@ This project is to control XACTI CX-GB400 gimbal and camera by using ROS topics.
 
 ```sh
 	## 1. Install v4l2loopback, choose either one of the following method
-		### method 1
-		sudo apt-get install -y v4l2loopback-utils
-		### method 2
-		cd /home/$USER/
-		git clone https://github.com/umlaeute/v4l2loopback.git
+	### method 1
+	sudo apt-get install -y v4l2loopback-utils
+	### method 2
+	cd /home/$USER/
+	git clone https://github.com/umlaeute/v4l2loopback.git
+	cd /home/$USER/v4l2loopback
+	make && sudo make install
+	sudo depmod -a
 
 
 	## 2. Setup v4l2loopback to automaticall create /dev/video30 after boot
-		sudo echo "v4l2loopback" >> /etc/modules-load.d/v4l2loopback.conf
-		sudo echo "options v4l2loopback video_nr=30" >> /etc/modprobe.d/v4l2loopback.conf
-		sudo echo "options v4l2loopback exclusive_caps=1" >> /etc/modprobe.d/v4l2loopback.conf
-		sudo echo 'options v4l2loopback card_label="Fake Device"' >> /etc/modprobe.d/v4l2loopback.conf
-		sudo update-initramfs -u
+	sudo echo "v4l2loopback" >> /etc/modules-load.d/v4l2loopback.conf
+	sudo echo "options v4l2loopback video_nr=30" >> /etc/modprobe.d/v4l2loopback.conf
+	sudo echo "options v4l2loopback exclusive_caps=1" >> /etc/modprobe.d/v4l2loopback.conf
+	sudo echo 'options v4l2loopback card_label="Fake Device"' >> /etc/modprobe.d/v4l2loopback.conf
+	sudo update-initramfs -u
+	reboot
 
 ```
 
@@ -65,3 +69,31 @@ This project is to control XACTI CX-GB400 gimbal and camera by using ROS topics.
 	source install/local_setup.bash
 
 ```
+
+## Topics Definition
+| Topic name                  |       Msg type    | Definition            |
+| :-------------------------- | :---------------: | :-------------------- |
+| /xacti/camera/orientation   | std_msgs/msg/Int8 | define the camera orientation 0: lower side, 1: uppser side, 2: yaw is not activated (must be fixed mechanically), 3: auto judge |
+| /xacti/camera/photo_capture | std_msgs/msg/Bool | either True or False then take a picture and save to SD card |
+| /xacti/camera/focus_mode    | std_msgs/msg/Int8 | 0: MF (default), 1: S-AF, 2: C-AF |
+
+## Run
+
+Before running ROS2 node on any terminal, you will need to source ROS2 environment. You can run the following command one-by-one or you can put in inside `~/.bashrc`
+```sh
+export ROS_DOMAIN_ID=1
+source /opt/ros/galactic/setup.bash
+source ~/dev_ws/install/local_setup.bash
+```
+
+
+```sh
+# Terminal 1
+ros2 launch xacti_cam camera_launch.py
+
+# Terminal 2
+ros2 topic list # you should be able to see /xactic/** topics listing.
+
+
+```
+
