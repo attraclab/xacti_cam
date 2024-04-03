@@ -796,12 +796,12 @@ class CameraControl : public rclcpp::Node {
 				}
 				
 
-				/// check if the last stamp in cb and now stamp is more than 1 second
+				/// check if the last stamp in cb and now stamp is more than 2 second
 				/// then it seems that frame is frozen...
 				int64_t stamp_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 				int64_t diff = stamp_now - last_frame_stamp;
 
-                if ((diff > 1000) && (this->start_stream_flag == true)){
+                if ((diff > 2000) && (this->start_stream_flag == true)){
                 	RCLCPP_WARN(this->get_logger(), "Frame seems to be stuck with diff %d", diff);
                 	RCLCPP_WARN(this->get_logger(), "Kill node");
                 	// RCLCPP_WARN(this->get_logger(), "Try start streaming again");

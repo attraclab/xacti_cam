@@ -25,7 +25,7 @@ The hardware diagram is shown as below and you can follow the following steps
 
 1. First you will need to plug the CX-GB400 to AX-DM100 by sliding in and lock. 
 2. Then insert a micro SD card into CX-GB400.
-3. Make a power cable with JST connector and contactor, please check the pin assign from [this document](./AX-DM100_インターフェース仕様_ver2.1.pdf). 
+3. Make a power cable with JST connector and contactor, please check the pin assign from [this document](./docs/AX-DM100_インターフェース仕様_ver2.1.pdf). 
 4. Connect power cable to AX-DM100's JST port, and connect USB between computer and AX-DM100
 5. Mounting position is important, as in the picture is **Upper Mount**, so you will need to choose either of Lower or Upper mount
 
@@ -128,7 +128,7 @@ source ~/dev_ws/install/local_setup.bash
 
 ```
 
-If you have installed **v4l2loopback** from Install, you will have `/dev/video30` virtual video device once booted. This video device will be getting a stream from camera, because when we're using libuvc, the original video device of CX-GB400 cannot be recognized anymore, so this package takes the video stream from libuvc and put it on new virtual device as `/dev/video30` for other purpose like web streaming, and image processing by OpenCV later.
+If you have installed **v4l2loopback** from [Install](https://github.com/attraclab/xacti_cam?tab=readme-ov-file#install), you will have `/dev/video30` virtual video device once booted. This video device will be getting a stream from camera, because when we're using libuvc, the original video device of CX-GB400 cannot be recognized anymore, so this package takes the video stream from libuvc and put it on new virtual device as `/dev/video30` for other purpose like web streaming, and image processing by OpenCV later.
 
 If you don't want an auto create of `/dev/video30`, you can run it each time after booted by this command
 
