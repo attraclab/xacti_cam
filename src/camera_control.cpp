@@ -109,6 +109,9 @@ class CameraControl : public rclcpp::Node {
 	                if (this->local_play == false){
 	                	cv::destroyAllWindows();
 	                }
+	            } else if ((parameter.get_name() == "video_out") && (parameter.get_type() == rclcpp::ParameterType::PARAMETER_BOOL)){
+	            	this->video_out = parameter.as_bool();
+	            	RCLCPP_INFO(this->get_logger(), "Parameter 'video_out' changed: %d", this->video_out);
 	            }
 	        }
 	        return result;
@@ -123,8 +126,10 @@ class CameraControl : public rclcpp::Node {
 
 			/// ROS params ///
 			this->declare_parameter("local_play", false);
+			this->declare_parameter("video_out", true);
 
 			this->local_play = this->get_parameter("local_play").as_bool();
+			this->video_out = this->get_parameter("video_out").as_bool();
 
 			param_callback_handle_ = this->add_on_set_parameters_callback(
 				std::bind(&CameraControl::parametersCallback, this, std::placeholders::_1));
@@ -137,8 +142,14 @@ class CameraControl : public rclcpp::Node {
 			gimbal_tilt_sub = this->create_subscription<std_msgs::msg::Int16>
 			("/xacti/gimbal/tilt", 10, std::bind(&CameraControl::gimbal_tilt_callback, this, std::placeholders::_1));
 
+			shooting_mode_sub = this->create_subscription<std_msgs::msg::Int8>
+			("/xacti/camera/shooting_mode", 10, std::bind(&CameraControl::shooting_mode_callback, this, std::placeholders::_1));
 			take_photo_sub = this->create_subscription<std_msgs::msg::Bool>
 			("/xacti/camera/photo_capture", 10, std::bind(&CameraControl::take_photo_callback, this, std::placeholders::_1));
+			take_photo_burst_sub = this->create_subscription<std_msgs::msg::Bool>
+			("/xacti/camera/photo_capture_burst", 10, std::bind(&CameraControl::take_photo_burst_callback, this, std::placeholders::_1));
+			take_photo_interval_sub = this->create_subscription<std_msgs::msg::Bool>
+			("/xacti/camera/photo_capture_interval", 10, std::bind(&CameraControl::take_photo_interval_callback, this, std::placeholders::_1));
 			camera_orientation_sub = this->create_subscription<std_msgs::msg::Int8>
 			("/xacti/camera/orientation", 10, std::bind(&CameraControl::camera_orientation_callback, this, std::placeholders::_1));
 			camera_focus_mode_sub = this->create_subscription<std_msgs::msg::Int8>
@@ -155,8 +166,19 @@ class CameraControl : public rclcpp::Node {
 			("/xacti/camera/iso", 10, std::bind(&CameraControl::camera_iso_callback, this, std::placeholders::_1));
 			camera_aperture_sub = this->create_subscription<std_msgs::msg::Int8>
 			("/xacti/camera/aperture", 10, std::bind(&CameraControl::camera_aperture_callback, this, std::placeholders::_1));
+			camera_exposure_mode_sub = this->create_subscription<std_msgs::msg::Int8>
+			("/xacti/camera/exposure_mode", 10, std::bind(&CameraControl::camera_exposure_mode_callback, this, std::placeholders::_1));
+			camera_speed_shutter_sub = this->create_subscription<std_msgs::msg::Int8>
+			("/xacti/camera/speed_shutter", 10, std::bind(&CameraControl::camera_speed_shutter_callback, this, std::placeholders::_1));
+			camera_exp_comp_sub = this->create_subscription<std_msgs::msg::Int8>
+			("/xacti/camera/exposure", 10, std::bind(&CameraControl::camera_exposure_compensation_callback, this, std::placeholders::_1));
+			camera_image_format_sub = this->create_subscription<std_msgs::msg::Int8>
+			("/xacti/camera/image_format", 10, std::bind(&CameraControl::camera_image_format_callback, this, std::placeholders::_1));
+
+
+			camera_hb_pub  = this->create_publisher<std_msgs::msg::Bool>("/xacti/camera/hb", 10);
 			
-			rmw_qos_profile_t custom_qos = rmw_qos_profile_default; //rmw_qos_profile_default; //rmw_qos_profile_sensor_data;
+			rmw_qos_profile_t custom_qos = rmw_qos_profile_sensor_data; //rmw_qos_profile_default; //rmw_qos_profile_sensor_data; //rmw_qos_profile_best_available
 	        image_pub = image_transport::create_publisher(this, "/xacti/camera/view", custom_qos); 
 			
 	        /// Start streaming and setup output video ///
@@ -165,27 +187,42 @@ class CameraControl : public rclcpp::Node {
 				this->startStream();
 
 				/// setup video output
-				this->initVideoOut();
+				if (this->video_out){
+					RCLCPP_INFO(this->get_logger(), "Setup video out of /dev/video30");
+					this->initVideoOut();
+				} else {
+					RCLCPP_INFO(this->get_logger(), "Not setup video out");
+				}
+				
 				
 			}
 
 			RCLCPP_INFO(this->get_logger(), "======== Following Topics are subscribed =========");
-			RCLCPP_INFO(this->get_logger(), "/xacti/camera/orientation      [std_msgs/msg/Int8]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/camera/photo_capture    [std_msgs/msg/Bool]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/camera/focus_mode       [std_msgs/msg/Int8]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/camera/focus_mm         [std_msgs/msg/Int32]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/camera/video_record     [std_msgs/msg/Bool]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/camera/video_resolution [std_msgs/msg/Int8]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/camera/optical_zoom     [std_msgs/msg/Int32]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/camera/iso              [std_msgs/msg/Int8]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/camera/aperture         [std_msgs/msg/Int8]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/gimbal/restart          [std_msgs/msg/Bool]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/gimbal/pan              [std_msgs/msg/Int16]");
-			RCLCPP_INFO(this->get_logger(), "/xacti/gimbal/tilt             [std_msgs/msg/Int16]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/orientation          [std_msgs/msg/Int8]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/shooting_mode        [std_msgs/msg/Int8]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/photo_capture        [std_msgs/msg/Bool]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/photo_capture_burst  [std_msgs/msg/Bool]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/photo_capture_interval [std_msgs/msg/Bool]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/focus_mode           [std_msgs/msg/Int8]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/focus_mm             [std_msgs/msg/Int32]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/video_record         [std_msgs/msg/Bool]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/video_resolution     [std_msgs/msg/Int8]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/optical_zoom         [std_msgs/msg/Int32]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/iso                  [std_msgs/msg/Int8]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/aperture             [std_msgs/msg/Int8]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/exposure_mode        [std_msgs/msg/Int8]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/speed_shutter        [std_msgs/msg/Int8]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/exposure             [std_msgs/msg/Int8]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/image_format         [std_msgs/msg/Int8]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/gimbal/restart              [std_msgs/msg/Bool]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/gimbal/pan                  [std_msgs/msg/Int16]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/gimbal/tilt                 [std_msgs/msg/Int16]");
 			RCLCPP_INFO(this->get_logger(), "======= Following Topics are published ============");
-			RCLCPP_INFO(this->get_logger(), "/xacti/camera/view             [sensor_msgs/msg/Image]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/view                 [sensor_msgs/msg/Image]");
+			RCLCPP_INFO(this->get_logger(), "/xacti/camera/hb                   [std_msgs/msg/Bool]");
 			RCLCPP_INFO(this->get_logger(), "================ ROS Parameters ===================");
 			RCLCPP_INFO(this->get_logger(), "local_play: %d", this->local_play);
+			RCLCPP_INFO(this->get_logger(), "video_out: %d", this->video_out);
 			
 			/// Loop ///
 			timer_ = this->create_wall_timer(30ms, std::bind(&CameraControl::timer_callback, this));
@@ -458,6 +495,36 @@ class CameraControl : public rclcpp::Node {
 
 		}
 
+		void shooting_mode_callback(const std_msgs::msg::Int8::SharedPtr msg)
+		{
+			/*
+				Shooting mode:
+				0 : Single (default)
+				1 : Burst
+				2 : AE Bracket
+				3 : Interval
+			*/
+
+			RCLCPP_INFO(this->get_logger(), "Shooting Mode");
+
+			struct DataShootingMode
+	        {
+	            uint8_t bShootingMode; //! 0 : execute
+	        };
+	        DataShootingMode data{};
+	        data.bShootingMode = msg->data;
+	        bool ret = this->SetCameraCtrl(0x06, 0x12, &data, sizeof(data));
+
+	        if (ret == false){
+	        	RCLCPP_ERROR(this->get_logger(), "Shooting Mode: communication error");
+	        } else {
+	        	this->shooting_mode = msg->data;
+	        }
+			
+
+		}
+
+
 		void take_photo_callback(const std_msgs::msg::Bool::SharedPtr msg)
 		{
 			/*
@@ -465,6 +532,23 @@ class CameraControl : public rclcpp::Node {
 			*/
 
 			RCLCPP_INFO(this->get_logger(), "Take photo");
+
+			if (this->shooting_mode != 0) {
+				RCLCPP_ERROR(this->get_logger(), "Take photo: shooting mode is not 0, change the shooting mode to single");
+				struct DataShootingMode
+		        {
+		            uint8_t bShootingMode; //! 0 : execute
+		        };
+		        DataShootingMode data{};
+		        data.bShootingMode = 0;
+		        bool ret = this->SetCameraCtrl(0x06, 0x12, &data, sizeof(data));
+
+		        if (ret == false){
+		        	RCLCPP_ERROR(this->get_logger(), "Take photo | Shooting Mode: communication error");
+		        } else {
+		        	this->shooting_mode = 0;
+		        }
+			}
 
 			struct DataTakePhoto
 	        {
@@ -478,6 +562,93 @@ class CameraControl : public rclcpp::Node {
 	        	RCLCPP_ERROR(this->get_logger(), "Take Photo: communication error");
 	        }
 			
+
+		}
+
+		void take_photo_burst_callback(const std_msgs::msg::Bool::SharedPtr msg)
+		{
+			/*
+				Listen either true or false, then camera will take a photo and save to SD card.
+			*/
+
+			
+
+			if (this->shooting_mode != 1) {
+
+				RCLCPP_WARN(this->get_logger(), "Take photo burst: shooting mode is not 1, change the shooting mode to burst");
+				struct DataShootingMode
+		        {
+		            uint8_t bShootingMode; //! 0 : execute
+		        };
+		        DataShootingMode data{};
+		        data.bShootingMode = 1;
+		        bool ret = this->SetCameraCtrl(0x06, 0x12, &data, sizeof(data));
+
+		        if (ret == false){
+		        	RCLCPP_ERROR(this->get_logger(), "Take photo burst | Shooting Mode: communication error");
+		        } else {
+		        	this->shooting_mode = 1;
+		        }
+				
+			}
+
+			RCLCPP_INFO(this->get_logger(), "Take photo burst: %d", msg->data);
+
+			struct DataTakePhotoBurst
+	        {
+	            uint8_t bBurstShot; //! 0 : execute
+	        };
+	        DataTakePhotoBurst data{};
+	        data.bBurstShot = 1;
+	        bool ret = this->SetCameraCtrl(0x06, 0xA, &data, sizeof(data));
+
+	        if (ret == false){
+	        	RCLCPP_ERROR(this->get_logger(), "Take Photo burst: communication error");
+	        }
+
+		}
+
+		void take_photo_interval_callback(const std_msgs::msg::Bool::SharedPtr msg)
+		{
+			/*
+				Listen either true or false, then camera will take a photo and save to SD card.
+			*/
+
+			
+
+			if (this->shooting_mode != 3) {
+
+				RCLCPP_WARN(this->get_logger(), "Take photo interval: shooting mode is not 3, change the shooting mode to interval");
+				struct DataShootingMode
+		        {
+		            uint8_t bShootingMode; //! 0 : execute
+		        };
+		        DataShootingMode data{};
+		        data.bShootingMode = 3;
+		        bool ret = this->SetCameraCtrl(0x06, 0x12, &data, sizeof(data));
+
+		        if (ret == false){
+		        	RCLCPP_ERROR(this->get_logger(), "Take photo interval | Shooting Mode: communication error");
+		        } else {
+		        	this->shooting_mode = 3;
+		        }
+				
+			}
+
+			RCLCPP_INFO(this->get_logger(), "Take photo interval: %d", msg->data);
+
+			
+			struct DataTakePhotoBurst
+	        {
+	            uint8_t bBurstShot; //! 0 : stop, 1 : start
+	        };
+	        DataTakePhotoBurst data{};
+	        data.bBurstShot = msg->data;
+	        bool ret = this->SetCameraCtrl(0x06, 0xA, &data, sizeof(data));
+
+	        if (ret == false){
+	        	RCLCPP_ERROR(this->get_logger(), "Take Photo burst: communication error");
+	        }
 
 		}
 
@@ -526,20 +697,32 @@ class CameraControl : public rclcpp::Node {
 				1 : S-AF
 				2 : C-AF 
 			*/
+			if (msg->data == 0){
+				RCLCPP_INFO(this->get_logger(), "Camera Focus Mode: %d MF", msg->data);
+			} else if (msg->data == 1){
+				RCLCPP_INFO(this->get_logger(), "Camera Focus Mode: %d S-AF", msg->data);
+			} else if (msg->data == 2){
+				RCLCPP_INFO(this->get_logger(), "Camera Focus Mode: %d C-AF", msg->data);
+			} else {
+				RCLCPP_INFO(this->get_logger(), "Camera Focus Mode: %d UNKNOWN", msg->data);
+			}
+			
+			if ((msg->data >= 0) && (msg->data <= 2)){
+				struct DataCameraFocusMode
+		        {
+		            uint32_t bFocusMode; //! 0 : execute
+		        };
+		        DataCameraFocusMode data{};
+		        data.bFocusMode = msg->data;
+		        bool ret = this->SetCameraCtrl(0x06, 0x1c, &data, sizeof(data));
 
-			RCLCPP_INFO(this->get_logger(), "Camera Focus Mode: %d", msg->data);
-
-			struct DataCameraFocusMode
-	        {
-	            uint32_t bFocusMode; //! 0 : execute
-	        };
-	        DataCameraFocusMode data{};
-	        data.bFocusMode = msg->data;
-	        bool ret = this->SetCameraCtrl(0x06, 0x1c, &data, sizeof(data));
-
-	        if (ret == false){
-	        	RCLCPP_ERROR(this->get_logger(), "Camera Focus Mode: communication error");
-	        }
+		        if (ret == false){
+		        	RCLCPP_ERROR(this->get_logger(), "Camera Focus Mode: communication error");
+		        }
+			
+			} else {
+				RCLCPP_INFO(this->get_logger(), "Camera Focus Mode: %d value out range", msg->data);
+			}
 			
 
 		}
@@ -554,17 +737,22 @@ class CameraControl : public rclcpp::Node {
 
 			RCLCPP_INFO(this->get_logger(), "Camera Focus %d mm", msg->data);
 
-			struct DataCameraFocus
-	        {
-	            uint32_t bFocusPosition; //! 0 : execute
-	        };
-	        DataCameraFocus data{};
-	        data.bFocusPosition = msg->data;
-	        bool ret = this->SetCameraCtrl(0x06, 0x1d, &data, sizeof(data));
+			if ((msg->data >= 300) && (msg->data <= 100000)){
+				struct DataCameraFocus
+		        {
+		            uint32_t bFocusPosition; //! 0 : execute
+		        };
+		        DataCameraFocus data{};
+		        data.bFocusPosition = msg->data;
+		        bool ret = this->SetCameraCtrl(0x06, 0x1d, &data, sizeof(data));
 
-	        if (ret == false){
-	        	RCLCPP_ERROR(this->get_logger(), "Camera Focus: communication error");
-	        }
+		        if (ret == false){
+		        	RCLCPP_ERROR(this->get_logger(), "Camera Focus: communication error");
+		        }
+			} else {
+				RCLCPP_INFO(this->get_logger(), "Camera Focus %d value out range", msg->data);
+			}
+			
 			
 
 		}
@@ -655,18 +843,22 @@ class CameraControl : public rclcpp::Node {
 
 			RCLCPP_INFO(this->get_logger(), "Camera Zoom: %d", zoom_val);
 			
+			if ((msg->data >= 100) && (msg->data <= 250)){
+				struct DataZoom
+		        {
+		            uint32_t bZoom; //! 0 : execute
+		        };
+		        DataZoom data{};
+		        data.bZoom = zoom_val;
+		        bool ret = this->SetCameraCtrl(0x07, 0x1a, &data, sizeof(data));
 
-			struct DataZoom
-	        {
-	            uint32_t bZoom; //! 0 : execute
-	        };
-	        DataZoom data{};
-	        data.bZoom = zoom_val;
-	        bool ret = this->SetCameraCtrl(0x07, 0x1a, &data, sizeof(data));
-
-	        if (ret == false){
-	        	RCLCPP_ERROR(this->get_logger(), "Camera Zoom: communication error");
-	        }
+		        if (ret == false){
+		        	RCLCPP_ERROR(this->get_logger(), "Camera Zoom: communication error");
+		        }
+			} else {
+				RCLCPP_ERROR(this->get_logger(), "Camera Zoom: value out range");
+			}
+			
 			
 
 		}
@@ -761,6 +953,292 @@ class CameraControl : public rclcpp::Node {
 
 		}
 
+		void camera_exposure_mode_callback(const std_msgs::msg::Int8::SharedPtr msg)
+		{
+			/* 
+			Exposure mode 
+				0 : Manual 
+				
+				3 : Program (default)
+
+			*/
+
+			RCLCPP_INFO(this->get_logger(), "Exposure Mode: %d", msg->data);
+
+			if ((0 == msg->data) || (msg->data == 3)){
+			
+
+				struct DataExposureMode
+		        {
+		            uint8_t bExposureMode; //! 0 : execute
+		        };
+		        DataExposureMode data{};
+		        data.bExposureMode = msg->data;
+		        bool ret = this->SetCameraCtrl(0x06, 0x14, &data, sizeof(data));
+
+		        if (ret == false){
+		        	RCLCPP_ERROR(this->get_logger(), "Exposure Mode: communication error");
+		        }
+		    } else {
+
+		    	RCLCPP_WARN(this->get_logger(), "Exposure Mode: no mode");
+		    }
+			
+
+		}
+
+		void camera_speed_shutter_callback(const std_msgs::msg::Int8::SharedPtr msg)
+		{
+			/*
+			Speed Shutter
+				0 : 1/8000
+				1 : 1/6400
+				2 : 1/5000
+				3 : 1/4000
+				4 : 1/3200
+				5 : 1/2500
+				6 : 1/2000
+				7 : 1/1600
+				8 : 1/1250
+				9 : 1/1000 		
+			   10 : 1/800 		
+			   11 : 1/640
+			   12 : 1/500
+			   13 : 1/400
+			   14 : 1/320
+			   15 : 1/250
+			   16 : 1/200
+			   17 : 1/160
+			   18 : 1/125
+			   19 : 1/100 (default)
+			   20 : 1/80
+			   21 : 1/60
+			   22 : 1/50
+			   23 : 1/40
+			   24 : 1/30
+			   25 : 1/25
+			   26 : 1/20
+			   27 : 1/15
+			   28 : 1/13
+			   29 : 1/10
+			   30 : 1/8
+			   31 : 1/6
+			   32 : 1/5
+			   33 : 1/4
+			   34 : 1/3
+			   35 : 1/2.5
+			   36 : 1/2
+			   37 : 1/1.6
+			   38 : 1/1.3
+			   39 : 1"
+			   40 : 1.3"
+			   41 : 1.6"
+			   42 : 2"
+			   43 : 2.5"
+			   44 : 3.2"
+			   45 : 4"
+			   46 : 5"
+			   47 : 6"
+			   48 : 8"
+
+			*/
+			if (msg->data == 0) {
+				this->speed_shutter = 1.0/8000.0;
+			} else if (msg->data == 1){
+				this->speed_shutter = 1.0/6400.0;
+			} else if (msg->data == 2){
+				this->speed_shutter = 1.0/5000.0;
+			} else if (msg->data == 3){
+				this->speed_shutter = 1.0/4000.0;
+			} else if (msg->data == 4){
+				this->speed_shutter = 1.0/3200.0;
+			} else if (msg->data == 5){
+				this->speed_shutter = 1.0/2500.0;
+			} else if (msg->data == 6){
+				this->speed_shutter = 1.0/2000.0;
+			} else if (msg->data == 7){
+				this->speed_shutter = 1.0/1600.0;
+			} else if (msg->data == 8){
+				this->speed_shutter = 1.0/1250.0;
+			} else if (msg->data == 9){
+				this->speed_shutter = 1.0/1000.0;
+			} else if (msg->data == 10){
+				this->speed_shutter = 1.0/800.0;
+			} else if (msg->data == 11){
+				this->speed_shutter = 1.0/640.0;
+			} else if (msg->data == 12){
+				this->speed_shutter = 1.0/500.0;
+			} else if (msg->data == 13){
+				this->speed_shutter = 1.0/400.0;
+			} else if (msg->data == 14){
+				this->speed_shutter = 1.0/320.0;
+			} else if (msg->data == 15){
+				this->speed_shutter = 1.0/250.0;
+			} else if (msg->data == 16){
+				this->speed_shutter = 1.0/200.0;
+			} else if (msg->data == 17){
+				this->speed_shutter = 1.0/160.0;
+			} else if (msg->data == 18){
+				this->speed_shutter = 1.0/125.0;
+			} else if (msg->data == 19){
+				this->speed_shutter = 1.0/100.0;
+			} else if (msg->data == 20){
+				this->speed_shutter = 1.0/80.0;
+			} else if (msg->data == 21){
+				this->speed_shutter = 1.0/60.0;
+			} else if (msg->data == 22){
+				this->speed_shutter = 1.0/50.0;
+			} else if (msg->data == 23){
+				this->speed_shutter = 1.0/40.0;
+			} else if (msg->data == 24){
+				this->speed_shutter = 1.0/30.0;
+			} else if (msg->data == 25){
+				this->speed_shutter = 1.0/25.0;
+			} else if (msg->data == 26){
+				this->speed_shutter = 1.0/20.0;
+			} else if (msg->data == 27){
+				this->speed_shutter = 1.0/15.0;
+			} else if (msg->data == 28){
+				this->speed_shutter = 1.0/13.0;
+			} else if (msg->data == 29){
+				this->speed_shutter = 1.0/10.0;
+			} else if (msg->data == 30){
+				this->speed_shutter = 1.0/8.0;
+			} else if (msg->data == 31){
+				this->speed_shutter = 1.0/6.0;
+			} else if (msg->data == 32){
+				this->speed_shutter = 1.0/5.0;
+			} else if (msg->data == 33){
+				this->speed_shutter = 1.0/4.0;
+			} else if (msg->data == 34){
+				this->speed_shutter = 1.0/3.0;
+			} else if (msg->data == 35){
+				this->speed_shutter = 1.0/2.5;
+			} else if (msg->data == 36){
+				this->speed_shutter = 1.0/2.0;
+			} else if (msg->data == 37){
+				this->speed_shutter = 1.0/1.6;
+			} else if (msg->data == 38){
+				this->speed_shutter = 1.0/1.3;
+			} else if (msg->data == 39){
+				this->speed_shutter = 1.0;
+			} else if (msg->data == 40){
+				this->speed_shutter = 1.3;
+			} else if (msg->data == 41){
+				this->speed_shutter = 1.6;
+			} else if (msg->data == 42){
+				this->speed_shutter = 2.0;
+			} else if (msg->data == 43){
+				this->speed_shutter = 2.5;
+			} else if (msg->data == 44){
+				this->speed_shutter = 3.2;
+			} else if (msg->data == 45){
+				this->speed_shutter = 4.0;
+			} else if (msg->data == 46){
+				this->speed_shutter = 5.0;
+			} else if (msg->data == 47){
+				this->speed_shutter = 6.0;
+			} else if (msg->data == 48){
+				this->speed_shutter = 8.0;
+			}
+			RCLCPP_INFO(this->get_logger(), "Camera Speed Shutter: %.4f seconds", this->speed_shutter);
+
+			if ((0 <= msg->data) && (msg->data <= 48)){
+			
+
+				struct DataSpeedShutter
+		        {
+		            uint8_t bExposureTime; //! 0 : execute
+		        };
+		        DataSpeedShutter data{};
+		        data.bExposureTime = msg->data;
+		        bool ret = this->SetCameraCtrl(0x06, 0x15, &data, sizeof(data));
+
+		        if (ret == false){
+		        	RCLCPP_ERROR(this->get_logger(), "Camera Speed Shutter: communication error");
+		        }
+		    } else {
+
+		    	RCLCPP_WARN(this->get_logger(), "Camera Speed Shutter: value out range");
+		    }
+		}
+
+		void camera_exposure_compensation_callback(const std_msgs::msg::Int8::SharedPtr msg)
+		{
+			/* 
+			Exposure Compensation
+				0 : -2.0
+				1 : -1.7
+				2 : -1.3
+				3 : -1.0
+				4 : -0.7
+				5 : -0.3
+				6 : 0.0 (default)
+				7 : +0.3
+				8 : +0.7
+				9 : +1.0
+			   10 : +1.3
+			   11 : +1.7
+			   12 : +2.0
+			*/
+
+			RCLCPP_INFO(this->get_logger(), "Camera Exposure Compensation: %d", msg->data);
+
+			if ((0 <= msg->data) && (msg->data <= 12)){
+			
+
+				struct DataExposureCompensation
+		        {
+		            uint8_t bExposureCompensation; //! 0 : execute
+		        };
+		        DataExposureCompensation data{};
+		        data.bExposureCompensation = msg->data;
+		        bool ret = this->SetCameraCtrl(0x06, 0x17, &data, sizeof(data));
+
+		        if (ret == false){
+		        	RCLCPP_ERROR(this->get_logger(), "Camera Exposure Compensation: communication error");
+		        }
+		    } else {
+
+		    	RCLCPP_WARN(this->get_logger(), "Camera Exposure Compensation: value out range");
+		    }
+			
+
+		}
+
+		void camera_image_format_callback(const std_msgs::msg::Int8::SharedPtr msg)
+		{
+			/* 
+			Image file format
+				0 : JPEG (default)
+				1 : DNG
+				2 : JPEG+DNG
+			*/
+
+			RCLCPP_INFO(this->get_logger(), "Image format: %d", msg->data);
+
+			if ((0 <= msg->data) && (msg->data <= 2)){
+			
+
+				struct DataImageFormat
+		        {
+		            uint8_t bImageFormat; 
+		        };
+		        DataImageFormat data{};
+		        data.bImageFormat = msg->data;
+		        bool ret = this->SetCameraCtrl(0x07, 0x3, &data, sizeof(data));
+
+		        if (ret == false){
+		        	RCLCPP_ERROR(this->get_logger(), "Image format: communication error");
+		        }
+		    } else {
+
+		    	RCLCPP_WARN(this->get_logger(), "Image format: value out range");
+		    }
+			
+
+		}
+
 		////////////
 		/// Loop ///
 		////////////
@@ -801,7 +1279,16 @@ class CameraControl : public rclcpp::Node {
 				int64_t stamp_now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 				int64_t diff = stamp_now - last_frame_stamp;
 
-                if ((diff > 2000) && (this->start_stream_flag == true)){
+				int64_t speed_shutter_ms;
+
+				if (this->speed_shutter > 0.1){
+					speed_shutter_ms = (int64_t) (this->speed_shutter * 1000.0 * 3.0);
+				} else {
+					speed_shutter_ms = 3000;
+				}
+				
+
+                if ((diff > speed_shutter_ms) && (this->start_stream_flag == true)){
                 	RCLCPP_WARN(this->get_logger(), "Frame seems to be stuck with diff %d", diff);
                 	RCLCPP_WARN(this->get_logger(), "Kill node");
                 	// RCLCPP_WARN(this->get_logger(), "Try start streaming again");
@@ -810,6 +1297,10 @@ class CameraControl : public rclcpp::Node {
                 	exit(1);
                 }
             }
+
+            auto hb_msg = std_msgs::msg::Bool();
+			hb_msg.data = true;
+			camera_hb_pub->publish(hb_msg);
             
             char key = (char)cv::waitKey(1);
   
@@ -830,6 +1321,8 @@ class CameraControl : public rclcpp::Node {
 	    int camera_position;
 	    bool camera_recording = false;
 	    bool start_stream_flag = false;
+	    int shooting_mode;
+	    float speed_shutter = 0.01;
 
 	    /// v4l2loopback write ///
 	    bool allow_video_out;
@@ -838,14 +1331,19 @@ class CameraControl : public rclcpp::Node {
 	    
 	    /// ROS params ///
 	    bool local_play;
+	    bool video_out;
 
 		/// Define the object of sub/pub ///
-		rclcpp::TimerBase::SharedPtr timer_;
-		rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr take_photo_sub;
 		rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr gimbal_enable_sub;
-		rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr camera_orientation_sub;
 		rclcpp::Subscription<std_msgs::msg::Int16>::SharedPtr gimbal_pan_sub;
 		rclcpp::Subscription<std_msgs::msg::Int16>::SharedPtr gimbal_tilt_sub;
+
+		rclcpp::TimerBase::SharedPtr timer_;
+		rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr shooting_mode_sub;
+		rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr take_photo_sub;
+		rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr take_photo_burst_sub;
+		rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr take_photo_interval_sub;
+		rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr camera_orientation_sub;
 		rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr camera_focus_mode_sub;
 		rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr camera_focus_sub;
 		rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr camera_recording_sub;
@@ -853,6 +1351,11 @@ class CameraControl : public rclcpp::Node {
 		rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr optical_zoom_sub;
 		rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr camera_iso_sub;
 		rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr camera_aperture_sub;
+		rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr camera_exposure_mode_sub;
+		rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr camera_speed_shutter_sub;
+		rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr camera_exp_comp_sub;
+		rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr camera_image_format_sub;
+		rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr camera_hb_pub;
 
 		image_transport::Publisher image_pub;
 

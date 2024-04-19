@@ -7,10 +7,16 @@ from launch.event_handlers.on_process_exit import OnProcessExit
 from launch.substitutions import LaunchConfiguration, PythonExpression
 
 local_play = False # True to play on screen, False to not display
+video_out = False
 
 def node_description(local_play_flag):
 	
-	parameters=[{'local_play': local_play_flag}]
+	parameters=[
+				{
+					'local_play': local_play_flag,
+					'video_out' : video_out
+				}
+				]
 
 	return Node(
 		package='xacti_cam',
